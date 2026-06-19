@@ -1,0 +1,3 @@
+The random subdivision of the board completely shatters conventional Go patterns, collapsing familiar logic into thrilling complexity where old experience no longer applies.
+Upon launching the program, you will marvel at how the segmentation multiplies the variables of the game.
+We look forward to seeing someone train an AI to master this brand-new, randomized version of Go.

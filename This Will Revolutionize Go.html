@@ -1,0 +1,579 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>This Will Revolutionize Go/这是一个颠覆围棋项目 </title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            background-color: #c8b48c;
+            display: flex; flex-direction: column; align-items: center;
+            padding: 8px; font-family: "Microsoft YaHei", sans-serif;
+        }
+        h1 { color: #64503c; margin-bottom: 4px; font-size: 19px; }
+        #game-info { font-size: 14px; color: #000; margin-bottom: 3px; font-weight: bold; }
+        #score-info { font-size: 13px; color: #333; margin-bottom: 3px; }
+        #canvas {
+            border: 2px solid #64503c;
+            background-color: #f0dcba;
+            border-radius: 4px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+        }
+        .controls { margin-top: 6px; display: flex; gap: 5px; flex-wrap: wrap; justify-content: center; align-items: center; }
+        .btn { padding: 5px 12px; font-size: 13px; color: white; border: none; border-radius: 3px; cursor: pointer; }
+        #restart-btn { background-color: #963232; }
+        #end-game-btn { background-color: #2e7d32; }
+        #undo-btn { background-color: #1976d2; }
+        #lang-btn { background-color: #7b5ea7; font-size: 13px; }
+        .result-modal {
+            display: none; position: fixed; top: 0; left: 0;
+            width: 100%; height: 100%; background-color: rgba(0,0,0,0.5);
+            z-index: 1000; justify-content: center; align-items: center;
+        }
+        .modal-content {
+            background-color: white; padding: 15px; border-radius: 6px;
+            text-align: center; box-shadow: 0 2px 10px rgba(0,0,0,0.3);
+            max-width: 360px; width: 85%;
+        }
+        .modal-title { font-size: 20px; color: #d32f2f; margin-bottom: 10px; }
+        .modal-score { font-size: 14px; margin: 5px 0; line-height: 1.6; text-align: left; padding-left: 30px; }
+        .close-btn { padding: 5px 20px; background-color: #2196f3; color: white; border: none; border-radius: 3px; cursor: pointer; margin-top: 8px; font-size: 14px; }
+    </style>
+</head>
+<body>
+    <h1 id="title">This Will Revolutionize Go</h1>
+    <div id="game-info">当前玩家: 黑方</div>
+    <div id="score-info">黑方: 0 目 | 白方: 0 目</div>
+    <canvas id="canvas" width="650" height="530"></canvas>
+    <div class="controls">
+        <button id="end-game-btn" class="btn">End Game & Score</button>
+        <button id="restart-btn" class="btn">Restart Game</button>
+        <button id="undo-btn" class="btn">Undo</button>
+        <button id="lang-btn" class="btn">中文</button>
+    </div>
+    <div id="result-modal" class="result-modal">
+        <div class="modal-content">
+            <h2 class="modal-title" id="modal-title">🎯 Game Result</h2>
+            <div id="final-detail" class="modal-score"></div>
+            <div id="winner-info" class="modal-score" style="font-weight:bold; font-size:16px; text-align:center; margin-top:6px;"></div>
+            <button id="close-modal-btn" class="close-btn">关闭</button>
+        </div>
+    </div>
+
+<script>
+// ========== 语言包 ==========
+const LANG = {
+    zh: {
+        title: "这将颠覆围棋",
+        current: "当前: ",
+        black: "黑方",
+        white: "白方",
+        gameOver: "游戏结束!",
+        score: (b, w) => `黑: ${b} | 白: ${w}`,
+        endGame: "结束游戏并结算",
+        restart: "重新开始游戏",
+        undo: "悔棋",
+        langSwitch: "English",
+        modalTitle: "🎯 游戏结果",
+        detail: (bs, terrB, liveB, ws, terrW, liveW) =>
+            `${LANG.zh.black}: ${bs} (${LANG.zh.territory}${terrB}+${LANG.zh.living}${liveB})<br>${LANG.zh.white}: ${ws} (${LANG.zh.territory}${terrW}+${LANG.zh.living}${liveW})`,
+        winner: (winner) => `🏆 ${winner}`,
+        blackWin: "黑方获胜!",
+        whiteWin: "白方获胜!",
+        draw: "平局!",
+        close: "关闭",
+        territory: "领地",
+        living: "活棋",
+    },
+    en: {
+        title: "This Will Revolutionize Go",
+        current: "Current: ",
+        black: "Black",
+        white: "White",
+        gameOver: "Game Over!",
+        score: (b, w) => `Black: ${b} | White: ${w}`,
+        endGame: "End Game & Score",
+        restart: "Restart Game",
+        undo: "Undo",
+        langSwitch: "中文",
+        modalTitle: "🎯 Game Result",
+        detail: (bs, terrB, liveB, ws, terrW, liveW) =>
+            `Black: ${bs} (Territory ${terrB} + Living ${liveB})<br>White: ${ws} (Territory ${terrW} + Living ${liveW})`,
+        winner: (winner) => `🏆 ${winner}`,
+        blackWin: "Black Wins!",
+        whiteWin: "White Wins!",
+        draw: "Draw!",
+        close: "Close",
+        territory: "Territory",
+        living: "Living",
+    }
+};
+
+let lang = 'en';
+
+function t(key) { return LANG[lang][key]; }
+function tf(key) { return LANG[lang][key]; } // function/computed
+
+function toggleLang() {
+    lang = lang === 'zh' ? 'en' : 'zh';
+    applyLang();
+    game.draw();
+}
+
+function applyLang() {
+    document.getElementById("title").textContent = t('title');
+    document.getElementById("lang-btn").textContent = t('langSwitch');
+    document.getElementById("end-game-btn").textContent = t('endGame');
+    document.getElementById("restart-btn").textContent = t('restart');
+    document.getElementById("undo-btn").textContent = t('undo');
+    document.getElementById("close-modal-btn").textContent = t('close');
+    document.getElementById("modal-title").textContent = t('modalTitle');
+    document.documentElement.lang = lang === 'zh' ? 'zh-CN' : 'en';
+}
+
+// ========== 常量 ==========
+const HEX_SIZE = 10;
+const BOARD_RADIUS = 9;
+const CW = 650, CH = 530;
+const LINE_COLOR = "#64503c";
+const SUB_COLOR = "#8B7355";
+const EPS = 1e-6;
+
+// ========== DOM ==========
+const canvas = document.getElementById("canvas");
+const ctx = canvas.getContext("2d");
+const gi = document.getElementById("game-info");
+const si = document.getElementById("score-info");
+document.getElementById("restart-btn").onclick = () => { location.reload(); };
+document.getElementById("end-game-btn").onclick = () => game.endGame();
+document.getElementById("undo-btn").onclick = () => game.undo();
+document.getElementById("lang-btn").onclick = toggleLang;
+document.getElementById("close-modal-btn").onclick = () => {
+    document.getElementById("result-modal").style.display = "none";
+};
+
+// ========== 几何工具 ==========
+function hexCenter(q, r, ox, oy) {
+    return [ox + HEX_SIZE * Math.sqrt(3) * (q + r/2), oy + HEX_SIZE * 3/2 * r];
+}
+function hexCorners(cx, cy) {
+    const c = [];
+    for (let i = 0; i < 6; i++) {
+        const a = Math.PI / 2 + Math.PI / 3 * i;
+        c.push([cx + HEX_SIZE * Math.cos(a), cy + HEX_SIZE * Math.sin(a)]);
+    }
+    return c;
+}
+function inRange(q, r) {
+    return Math.abs(q) <= BOARD_RADIUS && Math.abs(r) <= BOARD_RADIUS && Math.abs(-q - r) <= BOARD_RADIUS;
+}
+function avg(pts) {
+    let sx = 0, sy = 0;
+    for (const [x, y] of pts) { sx += x; sy += y; }
+    return [sx / pts.length, sy / pts.length];
+}
+function ptInPoly(px, py, poly) {
+    let inside = false;
+    for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+        const [xi, yi] = poly[i], [xj, yj] = poly[j];
+        if (((yi > py) !== (yj > py)) && (px < (xj - xi) * (py - yi) / (yj - yi + 1e-12) + xi)) inside = !inside;
+    }
+    return inside;
+}
+function eq(a, b) { return Math.abs(a[0] - b[0]) < EPS && Math.abs(a[1] - b[1]) < EPS; }
+function idxOf(verts, p) {
+    for (let i = 0; i < verts.length; i++) if (eq(verts[i], p)) return i;
+    return -1;
+}
+function sharesEdge(verts, a, b) {
+    const ia = idxOf(verts, a);
+    const ib = idxOf(verts, b);
+    if (ia < 0 || ib < 0) return false;
+    const d = Math.abs(ia - ib);
+    return d === 1 || d === verts.length - 1;
+}
+
+// ========== 分割方案 ==========
+const SPLITS = ['T6','R3','TC4','Q3','TP','Q2T1'];
+
+function makeSplit(corners, center) {
+    const V = corners, O = center;
+    const ps = [];
+    let adj = [];
+    const add = v => { const o = {v:v.slice(), c:avg(v)}; ps.push(o); return o; };
+    const type = SPLITS[Math.floor(Math.random() * SPLITS.length)];
+    
+    if (type === 'T6') {
+        for (let i = 0; i < 6; i++) add([O, V[i], V[(i+1)%6]]);
+        adj = ps.map((_, i) => [(i+5)%6, (i+1)%6]);
+    } else if (type === 'R3') {
+        add([O, V[0], V[1], V[2]]);
+        add([O, V[2], V[3], V[4]]);
+        add([O, V[4], V[5], V[0]]);
+        adj = [[1,2],[0,2],[0,1]];
+    } else if (type === 'TC4') {
+        add([V[0], V[2], V[4]]);
+        add([V[0], V[1], V[2]]);
+        add([V[2], V[3], V[4]]);
+        add([V[4], V[5], V[0]]);
+        adj = [[1,2,3],[0],[0],[0]];
+    } else if (type === 'Q3') {
+        add([V[0], V[1], O, V[5]]);
+        add([V[1], V[2], V[3], O]);
+        add([V[3], V[4], V[5], O]);
+        adj = [[1,2],[0,2],[0,1]];
+    } else if (type === 'TP') {
+        add([V[0], V[1], V[5]]);
+        add([V[1], V[2], V[3], V[4], V[5]]);
+        adj = [[1],[0]];
+    } else { // Q2T1
+        add([V[0], V[1], V[2]]);
+        add([V[0], V[2], V[3], V[4]]);
+        add([V[0], V[4], V[5]]);
+        adj = [[1],[0,2],[1]];
+    }
+    return {ps, adj};
+}
+
+// ========== 全局图构建 ==========
+function buildGraph(allCells, ox, oy) {
+    const G = new Map();
+    const key = (k, i) => `${k}:${i}`;
+    
+    for (const [ck, cell] of allCells) {
+        for (let i = 0; i < cell.ps.length; i++) {
+            G.set(key(ck, i), {nb:new Set(), c:cell.ps[i].c, ck, i, col:null});
+        }
+    }
+    
+    for (const [ck, cell] of allCells) {
+        for (let i = 0; i < cell.ps.length; i++) {
+            const a = key(ck, i);
+            for (const j of cell.adj[i]) {
+                if (j <= i) continue;
+                const b = key(ck, j);
+                G.get(a).nb.add(b);
+                G.get(b).nb.add(a);
+            }
+        }
+    }
+    
+    const dirs = [[-1,1],[-1,0],[0,-1],[1,-1],[1,0],[0,1]];
+    for (const [ck, cell] of allCells) {
+        const [q, r] = ck.split(",").map(Number);
+        const [cx, cy] = hexCenter(q, r, ox, oy);
+        const C = hexCorners(cx, cy);
+        
+        for (let e = 0; e < 6; e++) {
+            const nq = q + dirs[e][0], nr = r + dirs[e][1];
+            const nk = `${nq},${nr}`;
+            if (!allCells.has(nk)) continue;
+            
+            const nc = allCells.get(nk);
+            const [nx, ny] = hexCenter(nq, nr, ox, oy);
+            const NC = hexCorners(nx, ny);
+            
+            const p1 = C[e], p2 = C[(e+1)%6];
+            const re = (e+3)%6;
+            const np1 = NC[(re+1)%6], np2 = NC[re];
+            
+            for (let i = 0; i < cell.ps.length; i++) {
+                if (!sharesEdge(cell.ps[i].v, p1, p2)) continue;
+                for (let j = 0; j < nc.ps.length; j++) {
+                    if (!sharesEdge(nc.ps[j].v, np1, np2)) continue;
+                    const ga = key(ck, i), gb = key(nk, j);
+                    G.get(ga).nb.add(gb);
+                    G.get(gb).nb.add(ga);
+                }
+            }
+        }
+    }
+    return G;
+}
+
+// ========== 游戏主类 ==========
+class Game {
+    constructor() {
+        this.ox = CW / 2;
+        this.oy = CH / 2;
+        this.turn = 'black';
+        this.over = false;
+        this.bScore = 0;
+        this.wScore = 0;
+        this.hist = [];
+        this.G = new Map();
+        this.cells = new Map();
+        
+        this.init();
+        canvas.onclick = e => this.click(e);
+        this.draw();
+    }
+    
+    init() {
+        this.cells.clear();
+        for (let q = -BOARD_RADIUS; q <= BOARD_RADIUS; q++) {
+            const r1 = Math.max(-BOARD_RADIUS, -q - BOARD_RADIUS);
+            const r2 = Math.min(BOARD_RADIUS, -q + BOARD_RADIUS);
+            for (let r = r1; r <= r2; r++) {
+                if (!inRange(q, r)) continue;
+                const [cx, cy] = hexCenter(q, r, this.ox, this.oy);
+                const C = hexCorners(cx, cy);
+                const sp = makeSplit(C, avg(C));
+                this.cells.set(`${q},${r}`, sp);
+            }
+        }
+        this.G = buildGraph(this.cells, this.ox, this.oy);
+    }
+    
+    draw() {
+        ctx.clearRect(0, 0, CW, CH);
+        
+        for (const [ck, cell] of this.cells) {
+            const [q, r] = ck.split(",").map(Number);
+            const [cx, cy] = hexCenter(q, r, this.ox, this.oy);
+            const C = hexCorners(cx, cy);
+            
+            ctx.beginPath();
+            for (let i = 0; i < 6; i++) {
+                i === 0 ? ctx.moveTo(C[i][0], C[i][1]) : ctx.lineTo(C[i][0], C[i][1]);
+            }
+            ctx.closePath();
+            ctx.strokeStyle = LINE_COLOR;
+            ctx.lineWidth = 1.2;
+            ctx.stroke();
+            
+            for (const p of cell.ps) {
+                ctx.beginPath();
+                for (let i = 0; i < p.v.length; i++) {
+                    i === 0 ? ctx.moveTo(p.v[i][0], p.v[i][1]) : ctx.lineTo(p.v[i][0], p.v[i][1]);
+                }
+                ctx.closePath();
+                ctx.strokeStyle = SUB_COLOR;
+                ctx.lineWidth = 0.5;
+                ctx.stroke();
+            }
+        }
+        
+        for (const [id, nd] of this.G) {
+            if (!nd.col) continue;
+            const r = HEX_SIZE * 0.33;
+            ctx.beginPath();
+            ctx.arc(nd.c[0]+1, nd.c[1]+1, r, 0, Math.PI*2);
+            ctx.fillStyle = "rgba(0,0,0,0.2)";
+            ctx.fill();
+            ctx.beginPath();
+            ctx.arc(nd.c[0], nd.c[1], r, 0, Math.PI*2);
+            ctx.fillStyle = nd.col;
+            ctx.fill();
+            ctx.strokeStyle = "#444";
+            ctx.lineWidth = 0.6;
+            ctx.stroke();
+            
+            const lib = this.liberties(id);
+            ctx.fillStyle = nd.col === 'black' ? 'white' : 'black';
+            ctx.font = "bold 6px Arial";
+            ctx.textAlign = "center";
+            ctx.textBaseline = "middle";
+            ctx.fillText(lib, nd.c[0], nd.c[1]);
+        }
+        
+        if (this.over) {
+            gi.textContent = t('gameOver');
+        } else {
+            const turnName = this.turn === 'black' ? t('black') : t('white');
+            gi.textContent = t('current') + turnName;
+        }
+        si.textContent = t('score')(this.bScore, this.wScore);
+    }
+    
+    click(e) {
+        if (this.over) return;
+        const rect = canvas.getBoundingClientRect();
+        const mx = (e.clientX - rect.left) * (CW / rect.width);
+        const my = (e.clientY - rect.top) * (CH / rect.height);
+        
+        for (const [ck, cell] of this.cells) {
+            for (let i = 0; i < cell.ps.length; i++) {
+                if (!ptInPoly(mx, my, cell.ps[i].v)) continue;
+                this.place(`${ck}:${i}`);
+                return;
+            }
+        }
+    }
+    
+    place(id) {
+        const nd = this.G.get(id);
+        if (!nd || nd.col) return;
+        
+        this.save();
+        nd.col = this.turn;
+        
+        const opp = this.turn === 'black' ? 'white' : 'black';
+        const caps = this.captures(opp);
+        const capSet = new Set(caps.flat());
+        
+        if (capSet.size === 0 && this.liberties(id) === 0) {
+            nd.col = null;
+            this.hist.pop();
+            return;
+        }
+        
+        for (const cid of capSet) this.G.get(cid).col = null;
+        
+        if (this.turn === 'black') this.bScore += capSet.size;
+        else this.wScore += capSet.size;
+        
+        this.turn = this.turn === 'black' ? 'white' : 'black';
+        this.draw();
+    }
+    
+    group(id, col) {
+        const vis = new Set([id]);
+        const q = [id], grp = [id];
+        while (q.length) {
+            const cur = q.shift();
+            const nd = this.G.get(cur);
+            if (!nd) continue;
+            for (const nb of nd.nb) {
+                if (vis.has(nb)) continue;
+                const nn = this.G.get(nb);
+                if (nn && nn.col === col) {
+                    vis.add(nb);
+                    q.push(nb);
+                    grp.push(nb);
+                }
+            }
+        }
+        return grp;
+    }
+    
+    liberties(id) {
+        const nd = this.G.get(id);
+        if (!nd || !nd.col) return 0;
+        const grp = this.group(id, nd.col);
+        const libs = new Set();
+        for (const gid of grp) {
+            const gn = this.G.get(gid);
+            if (!gn) continue;
+            for (const nb of gn.nb) {
+                const nn = this.G.get(nb);
+                if (nn && !nn.col) libs.add(nb);
+            }
+        }
+        return libs.size;
+    }
+    
+    captures(col) {
+        const vis = new Set();
+        const res = [];
+        for (const [id, nd] of this.G) {
+            if (nd.col !== col || vis.has(id)) continue;
+            const grp = [];
+            const q = [id];
+            vis.add(id);
+            while (q.length) {
+                const cur = q.shift();
+                grp.push(cur);
+                const cn = this.G.get(cur);
+                if (!cn) continue;
+                for (const nb of cn.nb) {
+                    if (vis.has(nb)) continue;
+                    const nn = this.G.get(nb);
+                    if (nn && nn.col === col) {
+                        vis.add(nb);
+                        q.push(nb);
+                    }
+                }
+            }
+            if (grp.length && this.liberties(grp[0]) === 0) res.push(grp);
+        }
+        return res;
+    }
+    
+    save() {
+        const st = new Map();
+        for (const [id, nd] of this.G) st.set(id, nd.col);
+        this.hist.push({st, turn:this.turn, bs:this.bScore, ws:this.wScore});
+    }
+    
+    undo() {
+        if (!this.hist.length || this.over) return;
+        const st = this.hist.pop();
+        for (const [id, col] of st.st) {
+            const nd = this.G.get(id);
+            if (nd) nd.col = col;
+        }
+        this.turn = st.turn;
+        this.bScore = st.bs;
+        this.wScore = st.ws;
+        this.draw();
+    }
+    
+    endGame() {
+        this.over = true;
+        const terr = this.territory();
+        const live = this.living();
+        this.bScore = terr.b + live.b;
+        this.wScore = terr.w + live.w;
+        
+        let win;
+        if (this.bScore > this.wScore) win = lang === 'zh' ? t('blackWin') : t('blackWin');
+        else if (this.wScore > this.bScore) win = lang === 'zh' ? t('whiteWin') : t('whiteWin');
+        else win = lang === 'zh' ? t('draw') : t('draw');
+        
+        document.getElementById("final-detail").innerHTML =
+            t('detail')(this.bScore, terr.b, live.b, this.wScore, terr.w, live.w);
+        document.getElementById("winner-info").textContent = t('winner')(win);
+        document.getElementById("result-modal").style.display = "flex";
+        this.draw();
+    }
+    
+    territory() {
+        let b = 0, w = 0;
+        const vis = new Set();
+        for (const [id, nd] of this.G) {
+            if (nd.col || vis.has(id)) continue;
+            const q = [id], grp = new Set();
+            let own = null;
+            while (q.length) {
+                const cur = q.shift();
+                if (vis.has(cur)) continue;
+                vis.add(cur);
+                grp.add(cur);
+                const cn = this.G.get(cur);
+                for (const nb of cn.nb) {
+                    const nn = this.G.get(nb);
+                    if (nn.col) {
+                        if (own === null) own = nn.col;
+                        else if (own !== nn.col) own = 'n';
+                    } else if (!vis.has(nb)) q.push(nb);
+                }
+            }
+            if (own === 'black') b += grp.size;
+            else if (own === 'white') w += grp.size;
+        }
+        return {b, w};
+    }
+    
+    living() {
+        let b = 0, w = 0;
+        const chk = new Set();
+        for (const [id, nd] of this.G) {
+            if (!nd.col || chk.has(id)) continue;
+            const grp = this.group(id, nd.col);
+            if (chk.has(grp[0])) continue;
+            for (const g of grp) chk.add(g);
+            if (this.liberties(grp[0]) > 0) {
+                if (nd.col === 'black') b += grp.length;
+                else w += grp.length;
+            }
+        }
+        return {b, w};
+    }
+}
+
+const game = new Game();
+</script>
+</body>
+</html>
