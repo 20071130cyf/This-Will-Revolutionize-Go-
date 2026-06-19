@@ -1,3 +1,5 @@
+<img width="939" height="831" alt="屏幕截图 2026-06-19 104037" src="https://github.com/user-attachments/assets/1b9e8654-30ed-4c3e-a34c-799a90863292" />
+<img width="1573" height="863" alt="屏幕截图 2026-06-19 104149" src="https://github.com/user-attachments/assets/23b87eaa-3e07-45e8-af1a-8c58c0aede7f" />
 # This-Will-Revolutionize-Go-
 This Will Revolutionize Go/这是一个颠覆围棋的项目 
 🧩 This Will Revolutionize Go
